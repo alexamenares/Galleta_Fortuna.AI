@@ -1,0 +1,429 @@
+import random
+import json
+import os
+import datetime
+from collections import Counter
+ARCHIVO = "galleta_ai.json"
+
+PERSONALIDADES = {
+    "curiosa": {
+        "frases": [
+            "¿qué esperas que pase?",
+            "interesante elección...",
+            "todavía no sé qué opinar de ti",
+            "el primer paso siempre es el más extraño",
+            "aquí empieza todo, supongo"
+        ]
+    },
+    "neutral": {
+        "frases": [
+            "algo cambiará pronto.",
+            "una decisión pequeña importa más de lo que crees.",
+            "el futuro no está escrito, pero insiste en parecerlo.",
+            "hoy no es un día cualquiera.",
+            "nada es casualidad, pero casi todo es confuso."
+        ]
+    },
+    "sabia": {
+        "frases": [
+            "lo que buscas no está lejos, solo está mal interpretado.",
+            "la paciencia cambia más cosas que la fuerza.",
+            "no todo lo que termina es pérdida.",
+            "la claridad llega cuando dejas de forzarla.",
+            "el silencio a veces es más respuesta que mil palabras.",
+            "lo que temes perder ya no te pertenece del todo."
+        ]
+    },
+    "sarcastica": {
+        "frases": [
+            "sí, claro, el universo definitivamente gira alrededor de tus decisiones.",
+            "interesante plan. no va a funcionar, pero interesante.",
+            "otra vez tú confiando en el caos. valiente.",
+            "spoiler: no tienes el control que crees.",
+            "¿en serio? ¿otra vez? qué predecible.",
+            "claro, porque la última vez salió tan bien..."
+        ]
+    },
+    "agotada": {
+        "frases": [
+            "...",
+            "*crujido débil*",
+            "no.",
+            "mañana hablamos.",
+            "*silencio incómodo*",
+            "🥠"
+        ]
+    }
+}
+
+LOGROS = {
+    "novato": "Romper tu primera galleta",
+    "curioso": "Romper 5 galletas",
+    "adicto": "Romper 20 galletas",
+    "sabio": "Recibir 10 frases sabias",
+    "estoico": "Soportar 10 frases sarcásticas",
+    "conversador": "Compartir 5 recuerdos con la galleta",
+    "fiel": "Usar la galleta 7 días diferentes"
+}
+
+def limpiar_pantalla():
+    os.system('cls' if os.name == 'nt' else 'clear')
+
+def cargar():
+    if os.path.exists(ARCHIVO):
+        with open(ARCHIVO, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {"usuarios": {}}
+
+def guardar_con_backup(data):
+    # Backup antes de guardar
+    if os.path.exists(ARCHIVO):
+        backup_name = f"{ARCHIVO}.bak"
+        try:
+            import shutil
+            shutil.copy(ARCHIVO, backup_name)
+        except:
+            pass  # Si falla el backup, no pasa nada
+    
+    with open(ARCHIVO, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+
+def pedir_nombre():
+    while True:
+        n = input("👤 tu nombre: ").strip()
+        if n:
+            return n
+        print("necesitas un nombre. la galleta no trabaja con anónimos.")
+
+def extraer_temas(texto):
+    """Extrae palabras clave simples del texto"""
+    palabras_clave = ["trabajo", "amor", "familia", "salud", "dinero", 
+                      "miedo", "alegría", "tristeza", "sueño", "meta"]
+    texto_lower = texto.lower()
+    encontrados = [p for p in palabras_clave if p in texto_lower]
+    return encontrados[:3]  # máximo 3 temas
+
+def obtener_personalidad(usuario):
+    rompimientos = usuario.get("rompimientos", 0)
+    
+    if rompimientos > 15:
+        return "agotada"
+    elif rompimientos > 8:
+        return "sarcastica"
+    elif rompimientos > 3:
+        return "sabia"
+    elif rompimientos > 0:
+        return "neutral"
+    else:
+        return "curiosa"
+
+def obtener_frase(usuario):
+    personalidad = obtener_personalidad(usuario)
+    rompimientos = usuario.get("rompimientos", 0)
+    
+    # Si está agotada, solo frases mínimas
+    if personalidad == "agotada":
+        return random.choice(PERSONALIDADES["agotada"]["frases"]), personalidad
+    
+    frases = PERSONALIDADES.get(personalidad, PERSONALIDADES["neutral"])["frases"]
+    
+    # Evitar repetir la misma frase seguida
+    ultima = usuario.get("ultima_frase", "")
+    if len(frases) > 1:
+        frase = random.choice(frases)
+        while frase == ultima:
+            frase = random.choice(frases)
+    else:
+        frase = frases[0]
+    
+    usuario["ultima_frase"] = frase
+    return frase, personalidad
+
+def desbloquear_logros(usuario):
+    nuevos = []
+    rompimientos = usuario.get('rompimientos', 0)
+    historial = usuario.get('historial', [])
+    recuerdos = len(usuario.get('recuerdos', []))
+    
+    # Contar personalidades
+    sabias = sum(1 for h in historial if h.get('personalidad') == 'sabia')
+    sarcasticas = sum(1 for h in historial if h.get('personalidad') == 'sarcastica')
+    
+    # Días únicos
+    fechas_unicas = len(set(h.get('fecha', '')[:10] for h in historial if h.get('fecha')))
+    
+    if rompimientos >= 1 and not usuario.get("logro_novato"):
+        nuevos.append("novato")
+        usuario["logro_novato"] = True
+    if rompimientos >= 5 and not usuario.get("logro_curioso"):
+        nuevos.append("curioso")
+        usuario["logro_curioso"] = True
+    if rompimientos >= 20 and not usuario.get("logro_adicto"):
+        nuevos.append("adicto")
+        usuario["logro_adicto"] = True
+    if sabias >= 10 and not usuario.get("logro_sabio"):
+        nuevos.append("sabio")
+        usuario["logro_sabio"] = True
+    if sarcasticas >= 10 and not usuario.get("logro_estoico"):
+        nuevos.append("estoico")
+        usuario["logro_estoico"] = True
+    if recuerdos >= 5 and not usuario.get("logro_conversador"):
+        nuevos.append("conversador")
+        usuario["logro_conversador"] = True
+    if fechas_unicas >= 7 and not usuario.get("logro_fiel"):
+        nuevos.append("fiel")
+        usuario["logro_fiel"] = True
+    
+    if nuevos:
+        print("\n🏆 ¡LOGROS DESBLOQUEADOS! 🏆")
+        for logro in nuevos:
+            print(f"   ✓ {LOGROS[logro]}")
+        input("\nPresiona Enter para continuar...")
+        return True
+    return False
+
+def romper_galleta(usuario):
+    # Preguntar contexto antes de romper
+    print("\n🥠 la galleta te mira fijamente...")
+    contexto = input("¿quieres contarle algo antes de romperla? (opcional, Enter para saltar): ").strip()
+    
+    if contexto:
+        usuario.setdefault("recuerdos", []).append({
+            "fecha": datetime.datetime.now().isoformat(),
+            "mensaje": contexto,
+            "temas": extraer_temas(contexto)
+        })
+        print("🥠 la galleta asiente lentamente y guarda tus palabras...")
+    
+    # Modo adivinanza (20% probabilidad)
+    if random.random() < 0.2 and contexto:
+        preguntas = [
+            "¿estás pensando en alguien ahora mismo?",
+            "¿algo te preocupa hoy?",
+            "¿tomarás una decisión importante pronto?",
+            "¿hay algo que no te atreves a decir?"
+        ]
+        pregunta = random.choice(preguntas)
+        respuesta = input(f"\n🥠 {pregunta} (sí/no): ").strip().lower()
+        
+        if respuesta in ["sí", "si", "s", "sí"]:
+            print("🥠 lo sabía. la galleta siempre sabe.")
+            usuario["aciertos"] = usuario.get("aciertos", 0) + 1
+        else:
+            print("🥠 *ruido de galleta escéptica*")
+    
+    # Obtener frase
+    frase, personalidad = obtener_frase(usuario)
+    
+    # Personalizar según recuerdos (30% probabilidad)
+    if usuario.get("recuerdos") and random.random() < 0.3:
+        recuerdo = random.choice(usuario["recuerdos"])
+        if recuerdo.get("mensaje"):
+            frase = f"recuerdo cuando dijiste '{recuerdo['mensaje'][:40]}...' → {frase.lower()}"
+    
+    entrada = {
+        "fecha": datetime.datetime.now().isoformat(),
+        "mensaje": frase,
+        "personalidad": personalidad
+    }
+    
+    usuario.setdefault("historial", []).append(entrada)
+    usuario["rompimientos"] = usuario.get("rompimientos", 0) + 1
+    
+    # Limitar historial a últimas 50
+    if len(usuario["historial"]) > 50:
+        usuario["historial"] = usuario["historial"][-50:]
+    
+    print("\n" + "="*50)
+    print(f"🥠 {frase}")
+    print(f"🎭 personalidad: {personalidad}")
+    print("="*50)
+    
+    # Verificar logros
+    desbloquear_logros(usuario)
+
+def ver_historial(usuario):
+    print("\n📜 HISTORIAL DE LA GALLETA")
+    print("="*50)
+    
+    historial = usuario.get("historial", [])
+    
+    if not historial:
+        print("no has roto ninguna galleta. comportamiento sospechoso.")
+        return
+    
+    for i, h in enumerate(historial[-10:], 1):  # Mostrar últimas 10
+        fecha = h['fecha'][:16] if h.get('fecha') else 'fecha desconocida'
+        print(f"{i}. {fecha} [{h.get('personalidad', '?')}]")
+        print(f"   → {h.get('mensaje', '...')}\n")
+    
+    if len(historial) > 10:
+        print(f"... y {len(historial)-10} más en el archivo.")
+
+def mostrar_estadisticas(usuario):
+    print("\n📊 ESTADÍSTICAS DE TU GALLA")
+    print("="*50)
+    print(f"🥠 Galletas rotas: {usuario.get('rompimientos', 0)}")
+    print(f"🎯 Aciertos de la galleta: {usuario.get('aciertos', 0)}")
+    print(f"💬 Recuerdos compartidos: {len(usuario.get('recuerdos', []))}")
+    
+    historial = usuario.get('historial', [])
+    if historial:
+        print(f"📅 Primera vez: {historial[0]['fecha'][:10]}")
+        print(f"⏰ Última vez: {historial[-1]['fecha'][:10]}")
+    
+    # Distribución de personalidades
+    if historial:
+        personalidades = [h.get('personalidad', 'unknown') for h in historial]
+        distro = Counter(personalidades)
+        print("\n🎭 Distribución de personalidades:")
+        for p, count in distro.most_common():
+            barra = '█' * min(count, 20)
+            print(f"   {p}: {barra} ({count})")
+    
+    # Racha actual (días seguidos)
+    if len(historial) >= 2:
+        fechas = []
+        for h in historial:
+            try:
+                fechas.append(datetime.datetime.fromisoformat(h['fecha']).date())
+            except:
+                continue
+        
+        if fechas:
+            fechas_unicas = sorted(set(fechas))
+            racha = 1
+            for i in range(len(fechas_unicas)-1, 0, -1):
+                if (fechas_unicas[i] - fechas_unicas[i-1]).days <= 1:
+                    racha += 1
+                else:
+                    break
+            print(f"\n🔥 Racha actual: {racha} día(s) seguido(s)")
+    
+    # Logros conseguidos
+    logros_conseguidos = [nombre for nombre in LOGROS.keys() if usuario.get(f"logro_{nombre}")]
+    if logros_conseguidos:
+        print(f"\n🏆 Logros conseguidos: {len(logros_conseguidos)}/{len(LOGROS)}")
+        for logro in logros_conseguidos:
+            print(f"   ✓ {LOGROS[logro]}")
+    else:
+        print("\n🏆 Aún no tienes logros. ¡Sigue rompiendo galletas!")
+
+def resetear_progreso(usuario, nombre, data):
+    print("\n⚠️ ¡CUIDADO! Esto borrará TODO tu progreso.")
+    confirmacion = input("¿Estás seguro? Escribe 'SI' para confirmar: ").strip().upper()
+    
+    if confirmacion == "SI":
+        data["usuarios"][nombre] = {
+            "historial": [],
+            "rompimientos": 0,
+            "recuerdos": []
+        }
+        guardar_con_backup(data)
+        print("🥠 La galleta ha olvidado todo. Empiezas de cero.")
+        return data["usuarios"][nombre]
+    else:
+        print("🥠 Menos mal. La galleta suspira aliviada.")
+        return usuario
+
+def estado_galleta(usuario):
+    rompimientos = usuario.get("rompimientos", 0)
+    personalidad = obtener_personalidad(usuario)
+    
+    print("\n💬 ESTADO DE LA GALLETA")
+    print("="*40)
+    
+    if personalidad == "agotada":
+        print("🥠 la galleta está... agotada.")
+        print("   ha visto demasiado. necesita descansar.")
+        print("   vuelve mañana, si es que aún le importas.")
+    elif rompimientos > 10:
+        print("🥠 la galleta está cansada de tus tonterías.")
+        print("   pero sigue aquí, como un mal hábito.")
+    elif rompimientos > 5:
+        print("🥠 la galleta está en modo sabio gruñón.")
+        print("   te dará consejos, pero con resentimiento.")
+    elif rompimientos > 0:
+        print("🥠 la galleta está despierta y atenta.")
+        print("   tiene cosas que decirte.")
+    else:
+        print("🥠 la galleta está en estado virgen.")
+        print("   nunca ha sido rota. ten cuidado.")
+
+def menu(nombre, usuario):
+    limpiar_pantalla()
+    print("\n" + "="*50)
+    print("🥠  GALLETA INTELIGENTE  🥠".center(50))
+    print("="*50)
+    
+    # Mostrar estadísticas rápidas
+    print(f"👤 {nombre} | 🥠 rotas: {usuario.get('rompimientos', 0)}")
+    print(f"🎭 personalidad actual: {obtener_personalidad(usuario)}")
+    
+    print("\n  1. 🔮 Romper galleta")
+    print("  2. 📜 Ver historial")
+    print("  3. 💬 Estado de la galleta")
+    print("  4. 📊 Estadísticas detalladas")
+    print("  5. 🧹 Resetear mi progreso")
+    print("  6. 🚪 Salir")
+    print("\n" + "-"*50)
+    
+    return input("  → ").strip()
+
+def main():
+    limpiar_pantalla()
+    print("🥠 bienvenido a la galleta que recuerda cosas de ti")
+    print("esto probablemente no es saludable emocionalmente, pero seguimos\n")
+    
+    data = cargar()
+    nombre = pedir_nombre()
+    
+    if nombre not in data["usuarios"]:
+        data["usuarios"][nombre] = {
+            "historial": [],
+            "rompimientos": 0,
+            "recuerdos": []
+        }
+        print(f"\n🥠 ¡Hola {nombre}! La galleta te observa por primera vez.")
+    else:
+        print(f"\n🥠 {nombre}... otra vez tú. La galleta te reconoce.")
+    
+    usuario = data["usuarios"][nombre]
+    guardar_con_backup(data)
+    
+    while True:
+        op = menu(nombre, usuario)
+        
+        if op == "1":
+            romper_galleta(usuario)
+            guardar_con_backup(data)
+            input("\nPresiona Enter para continuar...")
+        
+        elif op == "2":
+            ver_historial(usuario)
+            input("\nPresiona Enter para continuar...")
+        
+        elif op == "3":
+            estado_galleta(usuario)
+            input("\nPresiona Enter para continuar...")
+        
+        elif op == "4":
+            mostrar_estadisticas(usuario)
+            input("\nPresiona Enter para continuar...")
+        
+        elif op == "5":
+            usuario = resetear_progreso(usuario, nombre, data)
+            input("\nPresiona Enter para continuar...")
+        
+        elif op == "6":
+            guardar_con_backup(data)
+            print("\n🥠 la galleta se queda observando en silencio...")
+            print("   sabe que volverás. siempre vuelves.")
+            break
+        
+        else:
+            print("🥠 opción inválida. incluso el destino está confundido.")
+            input("Presiona Enter para continuar...")
+
+if __name__ == "__main__":
+    main()
